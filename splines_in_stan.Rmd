@@ -46,39 +46,101 @@ $$
 The recursive formulation described above is defined  over the extended knots. If we do not extend the sequence of knots, we will not have B-spline functions covering the areas around the edges of the interval $[t_1, t_q)$. 
 The second-order B-spline, $B_{i,2}$, has, in general, two linear pieces which join continuously at $t_{i+1}$ to form a piecewise linear function and vanishes outside the interval $[t_i, t_{i+2})$. A family of second-order B-splines for knots$=\{-5,-4,-3,-2,-1,0,1,2,3,4,5\}$ is shown below: 
 
-
-```{r plot_spline_2, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
+First, here is how we create the spines: 
+```{r plot_spline_2a}   
 library(splines)
 X <- seq(from=-5, to=5, by=.1) 
 B <- bs(X, knots=seq(-5,5,1), degree=1, intercept = TRUE)
+dim(B)
+```
+
+These are the first 4 splines:  
+```{r plot_spline_2b, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
+par(mfrow = c(2,2), mar = c(4,5,2,1))
+for ( i in 1:4)
+  plot(X, B[,i], type="l", xlab = "x", ylab = paste("B-spline no.", i), ylim = c(0,1))
+```
+
+Here are all the splines:  
+```{r plot_spline_2c, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
 matplot(X, B, type="l", xlab = "x", ylab = "B-splines of order 2")
 ```
 
 As we can see, all the first-order B-splines, except the first and the last ones,  consist of two linear pieces. Those two splines are defined around the edge of the interval, and because of the knot extension, have two equal knots. Similarly, B-splines of order $k$ consist of $k$ pieces of polynomials with degree $k-1$ (except those B-splines near the borders). These $k$ pieces are joined continuously at $k-1$ interior knots and moreover, are $k-2$ times differentiable. For instance, B-splines of order 4 have differenitals of orders 1 and 2; that is why the fourth-order B-splines (which consist of cubic polynomials) are widely used in practice.  In the Figure below, we show a family of fourth-order B-splines:
 
-```{r plot_spline_4, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
-library(splines)
-X <- seq(from=-5, to=5, by=.1) 
+Make the splines:
+```{r plot_spline_4a, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
 B <- bs(X, knots=seq(-5,5,1), degree=3, intercept = TRUE)
+dim(B)
+```
+
+These are the first 4 splines:  
+```{r plot_spline_4b, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
+par(mfrow = c(2,2), mar = c(4,5,2,1))
+for ( i in 1:4)
+  plot(X, B[,i], type="l", xlab = "x", ylab = paste("B-spline no.", i), ylim = c(0,1))
+```
+Ande here are all the splines:  
+```{r plot_spline_4c, echo=FALSE, fig.height=3, fig.width=7.5, cache=TRUE}
 matplot(X, B, type="l", xlab = "x", ylab = "B-splines of order 4")
 ```
+
 
 We are now ready to define splines. A spline of order $k$ (degree $k-1$) with knot sequence ${\bf t} = t_1, \ldots, t_q$ is defined as linear combination of the B-splines, $B_{i,k}$, corresponding with that knot sequence. The set of all such splines can be denoted as follows:
 $$
 {\bf S}_{k,t}(x) = \{\sum_i a_i B_{i,k}(x), \quad a_i \in \mathbb{R} \}.
 $$
 
-A sample of fourth-order splines with $a_i$ independently drawn from $\mathcal{N}(0,1)$ is shown below:
+A little repetition of matrix calculus:
+```{r matrix_algebra} 
+a <- 1:2
+B = matrix(1:6, nrow = 2)
+cat("Values of a:", a, "\n")
+cat("Values of B:\n")
+B
 
+cat("\n")
+cat("Multiply value 1 of a with row 1 of B:\n")
+a[1]*B[1,]
+cat("Multiply value 2 of a with row 2 of B:\n")
+a[2]*B[2,]
+cat("Add both:\n")
+a[1]*B[1,] + a[2]*B[2,]
+
+cat("\n")
+cat("Which is the same as:\n")
+a%*%B
+
+```
+Show just the first 8 components (of 25) of a random spline
 ```{r plot_spline_sample, echo=FALSE, fig.height=3.5, fig.width=7.5, cache=TRUE}
+
 library(splines)
 set.seed(1234)
 X <- seq(from=-5, to=5, by=.02) 
 B <- t(bs(X, knots=seq(-5,5,0.5), degree=3, intercept = TRUE))
 num_basis <- nrow(B)
+# First random spline: Define 25 random numbers. 25 = number of knots (21) + 2 extra on each side (since we have k = 3)  
 a <- rnorm(num_basis, 0, 1)
+
+par(mfrow = c(4,2), mar = c(3,5,1,1))
+for ( i in 1:8)
+  plot(X, a[i]*B[i,], type="l", xlab = "x", ylab = paste("No.", i), ylim = c(-1.5, 1.5))
+
+```
+
+Sum all the 25 components
+```{r}
+plot(X, as.vector(a%*%B), type="l", ylim=c(-2,2), xlab="x", ylab="A sample of cubic splines")
+```
+
+A sample of fourth-order splines with $a_i$ independently drawn from $\mathcal{N}(0,1)$ is shown below:
+
+```{r plot_spline_sample, echo=FALSE, fig.height=3.5, fig.width=7.5, cache=TRUE}
+# First random spline: Define 25 random numbers. 25 = number of knots (21) + 2 extra on each side (since we have k = 3)  
 plot(X, as.vector(a%*%B), type="l", ylim=c(-2,2), xlab="x", ylab="A sample of cubic splines")
 for (i in 1:5) {
+  # Random splines number 2-6  
   a <- rnorm(num_basis, 0, 1)
   lines(X, as.vector(a%*%B))
 }
@@ -104,6 +166,24 @@ rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 sm<-stan_model("fit_basis.stan")
 fit<-sampling(sm,iter=500,control = list(adapt_delta=0.95))
+
+# Stops with error:
+#
+# Error in cleanup_makevar(old) : 
+# argument "RMU" is missing, with no default
+#
+# See here:
+# https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/8
+#
+# Solution seemed to be rolling back withr from 2.3.0 to 2.2.0, like this (https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/33)
+# Reinstalling stan from CRAN 
+# then reinstalling withr v.2.2.0, using  
+#   remotes::install_version("withr", "2.2.0")
+# 
+# Perhaps also
+#   file.rename("~/.R/Makevars.win", "~/.R/Makevars.win.bak")
+# https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/26
+
 ```
 
 where `fit_basis.stan` performs a simple regression:
