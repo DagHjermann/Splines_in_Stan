@@ -146,6 +146,169 @@ for (i in 1:5) {
 }
 ```
 
+
+## Fitting splines 
+
+## with smooth.spline  
+```{r}
+
+
+library("splines")   # bs
+
+X <- seq(from=-1, to=1, by=.025) # generating inputs
+B <- t(bs(X, knots=seq(-1,1,1), degree=2, intercept = TRUE)) # creating the B-splines
+num_data <- length(X); num_basis <- nrow(B)
+a0 <- 0.2 # intercept
+
+set.seed(991)
+a <- rnorm(num_basis, 0, 1) # coefficients of B-splines
+n_param <- length(a)
+
+Y_true <- as.vector(a0*X + a%*%B) # generating the output
+Y <- Y_true + rnorm(length(X),0,.1) # adding noise
+
+plot(X,Y, col="azure4")
+lines(X, Y_true, col="blue",lw=2)
+
+Y_spl <- smooth.spline(X, Y, nknots = 3)
+lines(Y_spl, col="red",lw=2)
+
+Y_spl$fit
+
+
+```
+### Woth optomaiztiopn  
+Failed
+```{r}
+
+library("splines")   # bs
+
+X <- seq(from=-1, to=1, by=.025) # generating inputs
+B <- t(bs(X, knots=seq(-1,1,1), degree=2, intercept = TRUE)) # creating the B-splines
+num_data <- length(X); num_basis <- nrow(B)
+a0 <- 0.2 # intercept
+
+set.seed(991)
+a <- rnorm(num_basis, 0, 1) # coefficients of B-splines
+n_param <- length(a)
+
+Y_true <- as.vector(a0*X + a%*%B) # generating the output
+Y <- Y_true + rnorm(length(X),0,.1) # adding noise
+
+plot(X,Y, col="azure4")
+lines(X, Y_true, col="blue",lw=2)
+
+# ?optim
+
+squared_diff <- function(a, y_observed){
+  y_guess <- as.vector(a0*X + a%*%B) # generating the output
+  sum((y_guess - y_observed))
+}
+
+# Optimization
+
+library(DEoptimR)
+
+fit2 <- JDEoptim(lower = rep(-2, n_param), upper = rep(2, n_param), squared_diff,
+                 y_observed = Y,
+                 tol = 1e-7, trace = TRUE, triter = 50)
+fit2
+
+fit2 <- JDEoptim(lower = a - 0.1, upper = a + 0.1, squared_diff,
+                 y_observed = Y,
+                 tol = 1e-7, trace = TRUE, triter = 10)
+fit2
+
+```
+
+
+### With JAGS   
+Code from https://docs.google.com/document/d/1AaKlgACkanDEqeFkL1EdS81eQdXHhgLTUmj9_PLcmM8/edit# 
+```{r}
+library(datasets)
+library(rjags)
+library(ggplot2)
+
+
+# Specify a JAGS linear model
+
+mk_jags_lin_mod <- function(prior.a, prior.b){
+    sink(paste("lin_reg_jags.mod.txt", sep=""))
+    cat(paste0("
+               model {
+               for (i in 1:N){
+               y[i] ~ dnorm(y.hat[i], tau)
+               y.hat[i] <- a + b * x[i]
+               }
+               a ~ ",prior.a,
+               "\tb ~ ",prior.b,
+               "\ttau <- pow(sigma, -2)
+               sigma ~ dunif(0, 100)
+               }
+               "))
+    sink()
+}
+
+mk_jags_spline_mod <- function(prior.a, prior.b){
+  sink(paste("spline_reg_jags.mod.txt", sep=""))
+  cat(paste0("model {
+                for (i in 1:N){
+                  y[i] ~ dnorm(y.hat[i], tau)
+                  y.hat[i] <- a + beta[1] + beta[2]*x[i] + beta[3]*pow(x[i], 2) + beta[4]*pow(x[i], 3)
+                }
+             
+                a ~ dnorm(0, .0001)
+             
+                # Specify priors for spline terms
+                for (k in 1:4) {
+                  beta.mu[k] ~ dnorm(0, 100)
+                  beta.tau[k] ~ dgamma(0.01, 10)
+                  beta[k] ~ dnorm(beta.mu[k], beta.tau[k])
+                }
+                  tau <- pow(sigma, -2)
+                  sigma ~ dunif(0, 100)
+             }"))
+    sink()
+}
+
+
+# Define a default vague prior
+default <- "dnorm(0, .0001)\n"
+
+# mk_jags_lin_mod(default, default)
+mk_jags_spline_mod(default, default)
+
+# Initialise
+jags.cars <- jags.model('spline_reg_jags.mod.txt',
+                              data = list('x' = mtcars$hp,
+                                          'y' = mtcars$mpg,
+                                          'N' = nrow(mtcars)),
+                              n.chains = 2,
+                              n.adapt = 1000)
+
+# Burn-in
+update(jags.cars, 5000) 
+
+# Sample
+coda.cars <- coda.samples(jags.cars, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+
+# Extract posterior estimates
+coda.sum <- summary(coda.cars)
+q <- coda.sum$quantiles
+
+mtcars$fit <- tail(q, -2)[,3]
+mtcars$lower <- tail(q, -2)[,1]
+mtcars$upper <- tail(q, -2)[,5]
+
+ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
+  geom_line(aes(y=fit, col="red")) +
+  geom_line(aes(y = lower), linetype = "dashed") +
+  geom_line(aes(y = upper), linetype = "dashed")
+  
+
+```
+
+
 # Fitting Splines in Stan
 
 ### Building B-splines in R
@@ -153,6 +316,7 @@ for (i in 1:5) {
 We are interested in using splines for regression; given an order and a set of knots, we would like to estimate the spline coefficients, $a_i$, that give the best fit to the data. For now, we focus on the univariate case and assume that the data consists of pairs of observation $\{(x_1, y_1), \ldots, (x_n, y_n)\}$ and our goal is to predict $y$ from $x$. There are some readily available functions in `R` to generate the B-splines. These functions can be used to build a design matrix. Then, this design matrix can be passed on to Stan for a usual linear regression. The code below demonstrates how this can be done for a toy example:
 
 ```{r use_R_spline, message=FALSE, comment=NA, cache=TRUE}
+
 library("splines")
 library("rstan")
 X <- seq(from=-5, to=5, by=.1) # generating inputs
@@ -164,25 +328,15 @@ Y_true <- as.vector(a0*X + a%*%B) # generating the output
 Y <- Y_true + rnorm(length(X),0,.2) # adding noise
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
-sm<-stan_model("fit_basis.stan")
+sm <- stan_model("fit_basis.stan")
 fit<-sampling(sm,iter=500,control = list(adapt_delta=0.95))
 
 # Stops with error:
 #
-# Error in cleanup_makevar(old) : 
-# argument "RMU" is missing, with no default
-#
-# See here:
-# https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/8
-#
-# Solution seemed to be rolling back withr from 2.3.0 to 2.2.0, like this (https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/33)
-# Reinstalling stan from CRAN 
-# then reinstalling withr v.2.2.0, using  
-#   remotes::install_version("withr", "2.2.0")
+# Error in mod$fit_ptr() : 
+#   Exception: variable does not exist; processing stage=data initialization; variable name=num_data; base type=int  (in 'model3f7832c02d7d_fit_basis' at line 2)
 # 
-# Perhaps also
-#   file.rename("~/.R/Makevars.win", "~/.R/Makevars.win.bak")
-# https://discourse.mc-stan.org/t/new-error-cleanup-makevar-old-argument-rmu-is-missing-with-no-default/18137/26
+# failed to create the sampler; sampling not done
 
 ```
 
@@ -333,8 +487,8 @@ for (i in 1:length(Y)) {
   Y_hat_ub[i] <- quantile(ff$Y_hat[,i],probs = 0.75)
 }
 plot(X,Y, col="azure4")
-polygon(c(rev(X), X), c(rev(Y_hat_lb), Y_hat_ub), col = 'grey80', border = NA, lw=2)
-lines(X, Y_hat_med, col="Red", lw=1)
+# polygon(c(rev(X), X), c(rev(Y_hat_lb), Y_hat_ub), col = 'grey80', border = NA, lw=2)
+# lines(X, Y_hat_med, col="Red", lw=1)
 lines(X, Y_true, col="blue",lw=1)
 ```
 
