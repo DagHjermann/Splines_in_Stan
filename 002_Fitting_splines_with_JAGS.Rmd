@@ -1,0 +1,381 @@
+---
+title: "002_Fitting_splines_with_JAGS"
+author: "DHJ"
+date: "30 1 2022"
+output: 
+  html_document:
+    keep_md: true
+    
+---
+
+## Packages  
+
+```{r}
+library(datasets)
+library(splines)
+library(rjags)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+```
+
+
+
+
+### Linear model with JAGS   
+
+Code from https://docs.google.com/document/d/1AaKlgACkanDEqeFkL1EdS81eQdXHhgLTUmj9_PLcmM8/edit# 
+
+```{r}
+
+# Specify a JAGS linear model
+
+mk_jags_lin_mod <- function(prior.a, prior.b){
+  sink(paste("lin_reg_jags.mod.txt", sep=""))
+  cat(paste0("model {
+  for (i in 1:N){
+    y[i] ~ dnorm(y.hat[i], tau)
+    y.hat[i] <- a + b * x[i]
+    }
+  a ~ ",prior.a,
+    "\tb ~ ",prior.b,
+    "\ttau <- pow(sigma, -2)
+  sigma ~ dunif(0, 100)
+}"))
+sink()
+}
+
+# Define a default vague prior
+default <- "dnorm(0, .0001)\n"
+
+mk_jags_lin_mod(default, default)
+
+# Initialise
+jags.cars <- jags.model('lin_reg_jags.mod.txt',
+                        data = list('x' = mtcars$hp,
+                                    'y' = mtcars$mpg,
+                                    'N' = nrow(mtcars)),
+                        n.chains = 2,
+                        n.adapt = 1000)
+
+# Burn-in
+update(jags.cars, 5000) 
+
+# Sample
+coda.cars <- coda.samples(jags.cars, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+
+# Extract posterior estimates
+coda.sum <- summary(coda.cars)
+q <- coda.sum$quantiles
+
+mtcars$fit <- tail(q, -3)[,3]
+mtcars$lower <- tail(q, -3)[,1]
+mtcars$upper <- tail(q, -3)[,5]
+
+ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
+  geom_line(aes(y=fit, col="red")) +
+  geom_line(aes(y = lower), linetype = "dashed") +
+  geom_line(aes(y = upper), linetype = "dashed")
+
+
+```
+
+### Splines with JAGS   
+
+Code from https://docs.google.com/document/d/1AaKlgACkanDEqeFkL1EdS81eQdXHhgLTUmj9_PLcmM8/edit# 
+
+```{r}
+
+# Specify model
+
+mk_jags_spline_mod <- function(prior.a, prior.b){
+  sink(paste("spline_reg_jags.mod.txt", sep=""))
+  cat(paste0("model {
+  
+  for (i in 1:N){
+    y[i] ~ dnorm(y.hat[i], tau)
+    y.hat[i] <- a + beta[1] + beta[2]*x[i] + beta[3]*pow(x[i], 2) + beta[4]*pow(x[i], 3)
+  }
+  
+  a ~ dnorm(0, .0001)
+  
+  # Specify priors for spline terms
+  for (k in 1:4) {
+    beta.mu[k] ~ dnorm(0, 100)
+    beta.tau[k] ~ dgamma(0.01, 10)
+    beta[k] ~ dnorm(beta.mu[k], beta.tau[k])
+  }
+    tau <- pow(sigma, -2)
+    sigma ~ dunif(0, 100)
+}"))
+sink()
+}
+
+
+# Define a default vague prior
+default <- "dnorm(0, .0001)\n"
+
+mk_jags_spline_mod(default, default)
+
+# Initialise
+jags.cars <- jags.model('spline_reg_jags.mod.txt',
+                        data = list('x' = mtcars$hp,
+                                    'y' = mtcars$mpg,
+                                    'N' = nrow(mtcars)),
+                        n.chains = 2,
+                        n.adapt = 1000)
+
+# Burn-in
+update(jags.cars, 5000) 
+
+# Sample
+coda.cars <- coda.samples(jags.cars, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+
+# Extract posterior estimates
+coda.sum <- summary(coda.cars)
+q <- coda.sum$quantiles
+
+mtcars$fit <- tail(q, -2)[,3]
+mtcars$lower <- tail(q, -2)[,1]
+mtcars$upper <- tail(q, -2)[,5]
+
+ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
+  geom_line(aes(y=fit, col="red")) +
+  geom_line(aes(y = lower), linetype = "dashed") +
+  geom_line(aes(y = upper), linetype = "dashed")
+
+
+```
+
+
+## Simulated data - no sencoring 
+
+### Create data   
+
+```{r}
+
+X <- seq(from=-1, to=1, by=.025) # generating inputs
+B <- t(bs(X, knots=seq(-1,1,1), degree=2, intercept = TRUE)) # creating the B-splines
+num_data <- length(X); num_basis <- nrow(B)
+a0 <- 0.2 # intercept
+
+set.seed(991)
+a <- rnorm(num_basis, 0, 1) # coefficients of B-splines
+n_param <- length(a)
+
+Y_true <- as.vector(a0*X + a%*%B) # generating the output
+Y <- Y_true + rnorm(length(X),0,.1) # adding noise
+
+dat <- data.frame(x = X, y = Y, y_true = Y_true)
+nrow(dat)
+
+```
+
+
+### Show data  
+
+```{r}
+
+ggplot(dat, aes(x, y)) +
+  geom_point() +
+  geom_line(aes(y = y_true), color = "blue")
+
+```
+
+```{r}
+
+# Define a default vague prior
+default <- "dnorm(0, .0001)\n"
+
+mk_jags_spline_mod(default, default)
+
+# Initialise
+jags.sim1 <- jags.model('spline_reg_jags.mod.txt',
+                        data = list('x' = dat$x,
+                                    'y' = dat$y,
+                                    'N' = nrow(dat)),
+                        n.chains = 2,
+                        n.adapt = 1000)
+
+# Burn-in
+update(jags.sim1, 5000) 
+
+# Sample
+coda.sim1 <- coda.samples(jags.sim1, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+
+# Extract posterior estimates
+coda.sum <- summary(coda.sim1)
+q <- coda.sum$quantiles
+
+dat$jags_fit <- tail(q, -2)[,3]
+dat$jags_lower <- tail(q, -2)[,1]
+dat$jags_upper <- tail(q, -2)[,5]
+
+ggplot(dat, aes(x, y)) +
+  geom_line(aes(y=jags_fit, col="red")) +
+  geom_line(aes(y = jags_lower), col="red", linetype = "dashed") +
+  geom_line(aes(y = jags_upper), col="red", linetype = "dashed") +
+  geom_point() +
+  geom_line(aes(y = y_true), color = "blue")
+
+
+```
+
+### Same, with smooth.spline and gam  
+```{r}
+
+model_smooth <- smooth.spline(dat$x, dat$y)
+check <- model_smooth$x - dat$x
+dat$smooth_fit <- model_smooth$y
+
+library(mgcv)
+model_gam <- gam(y ~ s(x), data = dat)
+dat$gam_fit <- predict(model_gam)
+
+
+ggplot(dat, aes(x, y)) +
+  geom_line(aes(y=jags_fit, col= "red")) +
+  geom_line(aes(y=gam_fit, col="green2")) +
+  geom_line(aes(y=smooth_fit, col="purple")) +
+  geom_point() +
+  geom_line(aes(y = y_true), color = "blue")
+
+dat_pred <- dat %>%
+  pivot_longer(c(jags_fit, gam_fit, smooth_fit, y_true), 
+               names_to = "Procedure", values_to = "y_fit") %>%
+  mutate(Procedure = factor(Procedure) %>% forcats::fct_relevel("y_true"))
+
+ggplot(dat_pred, aes(x, y_fit, color = Procedure, size = Procedure)) +
+  geom_line() +
+  scale_size_manual(values = c("gam_fit" = 2, "jags_fit" = 1, "smooth_fit" = 1, "y_true" = 3))
+    
+```
+
+## Splines with JAGS   
+
+Code from https://docs.google.com/document/d/1AaKlgACkanDEqeFkL1EdS81eQdXHhgLTUmj9_PLcmM8/edit# 
+
+```{r}
+
+# Specify a JAGS linear model
+
+mk_jags_lin_mod <- function(prior.a, prior.b){
+  sink(paste("lin_reg_jags.mod.txt", sep=""))
+  cat(paste0("model {
+               for (i in 1:N){
+               y[i] ~ dnorm(y.hat[i], tau)
+               y.hat[i] <- a + b * x[i]
+               }
+               a ~ ",prior.a,
+             "\tb ~ ",prior.b,
+             "\ttau <- pow(sigma, -2)
+               sigma ~ dunif(0, 100)
+               }
+               "))
+  sink()
+}
+
+mk_jags_spline_mod <- function(prior.a, prior.b){
+  sink(paste("spline_reg_jags.mod.txt", sep=""))
+  cat(paste0("model {
+                for (i in 1:N){
+                  y[i] ~ dnorm(y.hat[i], tau)
+                  y.hat[i] <- a + beta[1] + beta[2]*x[i] + beta[3]*pow(x[i], 2) + beta[4]*pow(x[i], 3)
+                }
+             
+                a ~ dnorm(0, .0001)
+             
+                # Specify priors for spline terms
+                for (k in 1:4) {
+                  beta.mu[k] ~ dnorm(0, 100)
+                  beta.tau[k] ~ dgamma(0.01, 10)
+                  beta[k] ~ dnorm(beta.mu[k], beta.tau[k])
+                }
+                  tau <- pow(sigma, -2)
+                  sigma ~ dunif(0, 100)
+             }"))
+  sink()
+}
+
+
+# Define a default vague prior
+default <- "dnorm(0, .0001)\n"
+
+mk_jags_spline_mod(default, default)
+
+# Initialise
+jags.cars <- jags.model('spline_reg_jags.mod.txt',
+                        data = list('x' = mtcars$hp,
+                                    'y' = mtcars$mpg,
+                                    'N' = nrow(mtcars)),
+                        n.chains = 2,
+                        n.adapt = 1000)
+
+# Burn-in
+update(jags.cars, 5000) 
+
+# Sample
+coda.cars <- coda.samples(jags.cars, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+
+# Extract posterior estimates
+coda.sum <- summary(coda.cars)
+q <- coda.sum$quantiles
+
+mtcars$fit <- tail(q, -2)[,3]
+mtcars$lower <- tail(q, -2)[,1]
+mtcars$upper <- tail(q, -2)[,5]
+
+ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
+  geom_line(aes(y=fit, col="red")) +
+  geom_line(aes(y = lower), linetype = "dashed") +
+  geom_line(aes(y = upper), linetype = "dashed")
+
+
+```
+
+
+## Appendix - try optimization  
+Failed
+```{r}
+
+library("splines")   # bs
+
+X <- seq(from=-1, to=1, by=.025) # generating inputs
+B <- t(bs(X, knots=seq(-1,1,1), degree=2, intercept = TRUE)) # creating the B-splines
+num_data <- length(X); num_basis <- nrow(B)
+a0 <- 0.2 # intercept
+
+set.seed(991)
+a <- rnorm(num_basis, 0, 1) # coefficients of B-splines
+n_param <- length(a)
+
+Y_true <- as.vector(a0*X + a%*%B) # generating the output
+Y <- Y_true + rnorm(length(X),0,.1) # adding noise
+
+plot(X,Y, col="azure4")
+lines(X, Y_true, col="blue",lw=2)
+
+# ?optim
+
+squared_diff <- function(a, y_observed){
+  y_guess <- as.vector(a0*X + a%*%B) # generating the output
+  sum((y_guess - y_observed))
+}
+
+# Optimization
+
+library(DEoptimR)
+
+fit2 <- JDEoptim(lower = rep(-2, n_param), upper = rep(2, n_param), squared_diff,
+                 y_observed = Y,
+                 tol = 1e-7, trace = TRUE, triter = 50)
+fit2
+
+fit2 <- JDEoptim(lower = a - 0.1, upper = a + 0.1, squared_diff,
+                 y_observed = Y,
+                 tol = 1e-7, trace = TRUE, triter = 10)
+fit2
+
+```
+
