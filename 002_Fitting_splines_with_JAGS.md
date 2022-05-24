@@ -10,8 +10,8 @@ output:
 
 ## Packages  
 
-```{r, results='hold', message=FALSE, warning=FALSE}
 
+```r
 library(datasets)
 library(splines)
 library(rjags)
@@ -25,7 +25,6 @@ library(tidyr)
 # - https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/jagam.html
 
 data(mtcars)
-
 ```
 
 
@@ -35,8 +34,8 @@ data(mtcars)
 
 Code from https://stackoverflow.com/questions/34989790/how-to-add-a-spline-to-rjags-model  
 
-```{r}
 
+```r
 # Specify a JAGS linear model
 
 mk_jags_lin_mod <- function(prior.a, prior.b){
@@ -66,7 +65,21 @@ jags.cars <- jags.model('lin_reg_jags.mod.txt',
                                     'N' = nrow(mtcars)),
                         n.chains = 2,
                         n.adapt = 1000)
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 32
+##    Unobserved stochastic nodes: 3
+##    Total graph size: 118
+## 
+## Initializing model
+```
+
+```r
 # Burn-in
 update(jags.cars, 5000) 
 
@@ -85,16 +98,16 @@ ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
   geom_line(aes(y=fit, col="red")) +
   geom_line(aes(y = lower), linetype = "dashed") +
   geom_line(aes(y = upper), linetype = "dashed")
-
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-2-1.png)<!-- -->
 
 ### Splines with JAGS   
 
 Code from https://docs.google.com/document/d/1AaKlgACkanDEqeFkL1EdS81eQdXHhgLTUmj9_PLcmM8/edit# 
 
-```{r}
 
+```r
 # Specify model
 
 mk_jags_spline_mod <- function(prior.a, prior.b){
@@ -133,13 +146,34 @@ jags.cars <- jags.model('spline_reg_jags.mod.txt',
                                     'N' = nrow(mtcars)),
                         n.chains = 2,
                         n.adapt = 1000)
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 32
+##    Unobserved stochastic nodes: 14
+##    Total graph size: 220
+## 
+## Initializing model
+```
+
+```r
 # Burn-in
 update(jags.cars, 5000) 
 
 # Sample
 coda.cars <- coda.samples(jags.cars, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+```
 
+```
+## Warning in FUN(X[[i]], ...): Failed to set trace monitor for b
+## Variable b not found
+```
+
+```r
 # Extract posterior estimates
 coda.sum <- summary(coda.cars)
 q <- coda.sum$quantiles
@@ -152,17 +186,17 @@ ggplot(data=mtcars, aes(x=hp, y=mpg)) + geom_point() +
   geom_line(aes(y=fit, col="red")) +
   geom_line(aes(y = lower), linetype = "dashed") +
   geom_line(aes(y = upper), linetype = "dashed")
-
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-3-1.png)<!-- -->
 
 
 ## Simulated data - no sencoring 
 
 ### Create data   
 
-```{r}
 
+```r
 X <- seq(from=-1, to=1, by=.025) # generating inputs
 B <- t(bs(X, knots=seq(-1,1,1), degree=2, intercept = TRUE)) # creating the B-splines
 num_data <- length(X); num_basis <- nrow(B)
@@ -177,23 +211,27 @@ Y <- Y_true + rnorm(length(X),0,.1) # adding noise
 
 dat <- data.frame(x = X, y = Y, y_true = Y_true)
 nrow(dat)
+```
 
+```
+## [1] 81
 ```
 
 
 ### Show data  
 
-```{r}
 
+```r
 ggplot(dat, aes(x, y)) +
   geom_point() +
   geom_line(aes(y = y_true), color = "blue")
-
 ```
 
-### Estimate model using JAGS  
-```{r}
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-5-1.png)<!-- -->
 
+### Estimate model using JAGS  
+
+```r
 # Define a default vague prior
 default <- "dnorm(0, .0001)\n"
 
@@ -206,13 +244,34 @@ jags.sim1 <- jags.model('spline_reg_jags.mod.txt',
                                     'N' = nrow(dat)),
                         n.chains = 2,
                         n.adapt = 1000)
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 81
+##    Unobserved stochastic nodes: 14
+##    Total graph size: 632
+## 
+## Initializing model
+```
+
+```r
 # Burn-in
 update(jags.sim1, 5000) 
 
 # Sample
 coda.sim1 <- coda.samples(jags.sim1, variable.names = c('a', 'b', 'y.hat','tau'), n.iter = 1000)
+```
 
+```
+## Warning in FUN(X[[i]], ...): Failed to set trace monitor for b
+## Variable b not found
+```
+
+```r
 # Extract posterior estimates
 coda.sum <- summary(coda.sim1)
 q <- coda.sum$quantiles
@@ -227,18 +286,40 @@ ggplot(dat, aes(x, y)) +
   geom_line(aes(y = jags_upper), col="red", linetype = "dashed") +
   geom_point() +
   geom_line(aes(y = y_true), color = "blue")
-
-
 ```
 
-### Same, with smooth.spline and gam  
-```{r}
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
 
+### Same, with smooth.spline and gam  
+
+```r
 model_smooth <- smooth.spline(dat$x, dat$y)
 check <- model_smooth$x - dat$x
 dat$smooth_fit <- model_smooth$y
 
 library(mgcv)
+```
+
+```
+## Loading required package: nlme
+```
+
+```
+## 
+## Attaching package: 'nlme'
+```
+
+```
+## The following object is masked from 'package:dplyr':
+## 
+##     collapse
+```
+
+```
+## This is mgcv 1.8-38. For overview type 'help("mgcv-package")'.
+```
+
+```r
 model_gam <- gam(y ~ s(x), data = dat)
 dat$gam_fit <- predict(model_gam)
 
@@ -249,7 +330,11 @@ ggplot(dat, aes(x, y)) +
   geom_line(aes(y=smooth_fit, col="purple")) +
   geom_point() +
   geom_line(aes(y = y_true), color = "blue")
+```
 
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-7-1.png)<!-- -->
+
+```r
 dat_pred <- dat %>%
   pivot_longer(c(jags_fit, gam_fit, smooth_fit, y_true), 
                names_to = "Procedure", values_to = "y_fit") %>%
@@ -258,8 +343,9 @@ dat_pred <- dat %>%
 ggplot(dat_pred, aes(x, y_fit, color = Procedure, size = Procedure)) +
   geom_line() +
   scale_size_manual(values = c("gam_fit" = 2, "jags_fit" = 1, "smooth_fit" = 1, "y_true" = 3))
-    
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-7-2.png)<!-- -->
 
 
 ## Censored data - linear    
@@ -271,8 +357,8 @@ ggplot(dat_pred, aes(x, y_fit, color = Procedure, size = Procedure)) +
 
     - One change: including y_hat specifically
 
-```{r}
 
+```r
 leftcensored_lm <- function(data,
                             n.chains = n.chains, # Number of different starting positions
                             n.iter = n.iter, # Number of iterations
@@ -337,14 +423,12 @@ model
        model = model_mcmc)
   
 }
-
-
 ```
 
 ### Function for getting estimated values (= posterior quantiles of y_hat)
 
-```{r}
 
+```r
 get_estimated_line <- function(jagsresult, data_x_values){
   
   qnt <- jagsresult$summary$quantiles
@@ -362,14 +446,13 @@ get_estimated_line <- function(jagsresult, data_x_values){
   pred_yhat
   
 }
-
 ```
 
 
 ### mtcars dataset, censored
 
-```{r}
 
+```r
 thr <- 14
 
 mtcars_cns <- mtcars %>%
@@ -386,13 +469,14 @@ mtcars_cns <- mtcars %>%
 ggplot(data=mtcars_cns, 
        aes(x=hp, y=mpg_cns, color = factor(mpg_over))) + 
   geom_point()
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-10-1.png)<!-- -->
 
 ### mtcars, linear model   
 
-```{r}
 
+```r
 # x, y_cens, y_aboveLOQ, y_LOQ
 
 df_test <- mtcars_cns %>%
@@ -403,9 +487,39 @@ df_test <- mtcars_cns %>%
     y_LOQ = thresh)
 
 result <- leftcensored_lm(df_test)
+```
 
+```
+## module glm loaded
+```
+
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 61
+##    Unobserved stochastic nodes: 6
+##    Total graph size: 183
+## 
+## Initializing model
+```
+
+```r
 result$summary$quantiles %>% head()
+```
 
+```
+##                   2.5%          25%          50%          75%        97.5%
+## deviance  157.32374628 158.80199438 160.39068605 162.61444897 169.08398082
+## intercept  26.78875392  29.12351204  30.22743051  31.41027688  33.71858162
+## sigma       3.13064605   3.65395042   4.01043547   4.42128924   5.46163238
+## slope      -0.09183977  -0.07673687  -0.06936173  -0.06228148  -0.04840801
+## y_hat[1]   20.99528103  22.05626173  22.60771082  23.14571722  24.21953478
+## y_hat[10]  20.19602635  21.18383104  21.69708779  22.20582035  23.21067135
+```
+
+```r
 pred_yhat <- get_estimated_line(result, mtcars_cns$hp)
 
 ggplot(data=mtcars_cns, 
@@ -414,9 +528,9 @@ ggplot(data=mtcars_cns,
   geom_line(data = pred_yhat, aes(x = x, y = `50%`)) +
   geom_line(data = pred_yhat, aes(x = x, y = `2.5%`), linetype = "dashed") +
   geom_line(data = pred_yhat, aes(x = x, y = `97.5%`), linetype = "dashed")
-
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-11-1.png)<!-- -->
 
 ## Censored data - splines    
 
@@ -425,8 +539,8 @@ ggplot(data=mtcars_cns,
 * Based on previous leftcensored_lm function  
 * Adapted to splines using this: https://stackoverflow.com/a/35004157/1734247  
 
-```{r}
 
+```r
 leftcensored_splines <- function(data,
                             n.chains = n.chains, # Number of different starting positions
                             n.iter = n.iter, # Number of iterations
@@ -499,28 +613,37 @@ model
        model = model_mcmc)
   
 }
-
-
 ```
 
 
 ### mtcars, splines model     
 
-```{r}
 
+```r
 result <- mtcars_cns %>%
   rename(
     x = hp,
     y_cens = mpg_cns,
     y_aboveLOQ = mpg_over,
     y_LOQ = thresh) %>% leftcensored_splines(df_test)
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 61
+##    Unobserved stochastic nodes: 17
+##    Total graph size: 284
+## 
+## Initializing model
 ```
 
 ### mtcars splines, plot  
 
-```{r}
 
+```r
 pred_yhat <- get_estimated_line(result, mtcars_cns$hp)
 
 ggplot(data=mtcars_cns, 
@@ -529,15 +652,16 @@ ggplot(data=mtcars_cns,
   geom_line(data = pred_yhat, aes(x = x, y = `50%`)) +
   geom_line(data = pred_yhat, aes(x = x, y = `2.5%`), linetype = "dashed") +
   geom_line(data = pred_yhat, aes(x = x, y = `97.5%`), linetype = "dashed")
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
 
 ## Censored data - splines, more trials      
 
 ### more drastic censoring - data
 
-```{r}
 
+```r
 mtcars_cns <- mtcars %>%
   mutate(
     thresh = case_when(
@@ -553,15 +677,24 @@ mtcars_cns <- mtcars %>%
   )
 
 table(mtcars_cns$mpg_over)
+```
+
+```
+## 
+##  0  1 
+## 10 22
+```
+
+```r
 #  0  1 
 # 10 22 
 
 ggplot(data=mtcars_cns, 
        aes(x=hp, y=mpg_cns, color = factor(mpg_over))) + 
   geom_point()
-
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
 
 ### more drastic censoring - model  
 
@@ -570,8 +703,8 @@ ggplot(data=mtcars_cns,
     - Observed stochastic nodes: 54
     - Unobserved stochastic nodes: 24
 
-```{r}
 
+```r
 result <- mtcars_cns %>%
   rename(
     x = hp,
@@ -579,7 +712,21 @@ result <- mtcars_cns %>%
     y_aboveLOQ = mpg_over,
     y_LOQ = thresh) %>%
   leftcensored_splines()
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 54
+##    Unobserved stochastic nodes: 24
+##    Total graph size: 284
+## 
+## Initializing model
+```
+
+```r
 pred_yhat <- get_estimated_line(result, mtcars_cns$hp)
 
 ggplot(data=mtcars_cns, 
@@ -588,8 +735,9 @@ ggplot(data=mtcars_cns,
   geom_line(data = pred_yhat, aes(x = x, y = `50%`)) +
   geom_line(data = pred_yhat, aes(x = x, y = `2.5%`), linetype = "dashed") +
   geom_line(data = pred_yhat, aes(x = x, y = `97.5%`), linetype = "dashed")
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-16-1.png)<!-- -->
 
 ### even more drastic censoring - data  
 
@@ -598,8 +746,8 @@ ggplot(data=mtcars_cns,
     - Observed stochastic nodes: 45
     - Unobserved stochastic nodes: 33
 
-```{r}
 
+```r
 mtcars_cns <- mtcars %>%
   mutate(
     thresh = case_when(
@@ -615,19 +763,29 @@ mtcars_cns <- mtcars %>%
   )
 
 table(mtcars_cns$mpg_over)
+```
+
+```
+## 
+##  0  1 
+## 19 13
+```
+
+```r
 #  0  1 
 # 19 13 
 
 ggplot(data=mtcars_cns, 
        aes(x=hp, y=mpg_cns, color = factor(mpg_over))) + 
   geom_point()
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
 
 ### even more drastic censoring - model
 
-```{r}
 
+```r
 if (FALSE){
   
   # SPLINES - commented out because it fails!
@@ -653,7 +811,21 @@ result <- mtcars_cns %>%
     y_aboveLOQ = mpg_over,
     y_LOQ = thresh) %>%
   leftcensored_lm()
+```
 
+```
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 45
+##    Unobserved stochastic nodes: 22
+##    Total graph size: 183
+## 
+## Initializing model
+```
+
+```r
 pred_yhat <- get_estimated_line(result, mtcars_cns$hp)
 
 ggplot(data=mtcars_cns, 
@@ -662,9 +834,9 @@ ggplot(data=mtcars_cns,
   geom_line(data = pred_yhat, aes(x = x, y = `50%`)) +
   geom_line(data = pred_yhat, aes(x = x, y = `2.5%`), linetype = "dashed") +
   geom_line(data = pred_yhat, aes(x = x, y = `97.5%`), linetype = "dashed")
-
-
 ```
+
+![](002_Fitting_splines_with_JAGS_files/figure-html/unnamed-chunk-18-1.png)<!-- -->
 
 
 
